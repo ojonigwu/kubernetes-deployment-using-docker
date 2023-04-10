@@ -1,0 +1,61 @@
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Add user to Docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+
+    - name: Add Kubernetes repository
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+      apt_repository:
+        repo: deb https://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+
+    - name: Install kubeadm, kubelet, and kubectl
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Initialize Kubernetes control plane
+      command: kubeadm init --pod-network-cidr=10.244.0.0/16
+      register: kubeadm_output
+      changed_when: "'Your Kubernetes control-plane has initialized' in kubeadm_output.stdout"
+
+    - name: Set up kubectl configuration
+      become_user: "{{ ansible_user }}"
+      copy:
+        content: "{{ hostvars[inventory_hostname]['kubeadm_join_command']['stdout_lines'][0] }}"
+        dest: $HOME/.kube/config
+      when: "'kubeadm_join_command' in hostvars[inventory_hostname]"
+
+    - name: Install Calico pod network
+      command: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+      when: "'kubeadm_join_command' in hostvars[inventory_hostname]"
+
+    - name: Retrieve kubeadm join command
+      command: kubeadm token create --print-join-command
+      register: kubeadm_join_command
+      changed_when: False
+      when: "'kubeadm_join_command' not in hostvars[inventory_hostname]"
+
+    - name: Save kubeadm join command for future use
+      set_fact:
+        kubeadm_join_command: "{{ kubeadm_join_command.stdout_lines }}"
+
+      when: "'kubeadm_join_command' not in hostvars[inventory_hostname]"
+
+    - name: Output kubeadm join command
+      debug:
+        msg: "{{ hostvars[inventory_hostname]['kubeadm_join_command']['stdout_lines'][0] }}"
