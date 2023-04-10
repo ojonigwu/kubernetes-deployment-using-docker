@@ -1,0 +1,9 @@
+- hosts: worker
+  become: yes
+  vars:
+    master_node_ip: "192.168.1.10" # replace with the IP address of your master node
+    token: "abc123" # replace with the token generated on the master node
+    ca_cert_hash: "sha256:xyz123" # replace with the hash of the CA certificate on the master node
+  tasks:
+    - name: Join Kubernetes cluster
+      shell: "kubeadm join {{ master_node_ip }}:6443 --token {{ token }} --discovery-token-ca-cert-hash {{ ca_cert_hash }}"
